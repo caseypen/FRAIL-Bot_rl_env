@@ -27,7 +27,7 @@ class BerryPick(object):
 	def _update
 ~~~~
 ## States:
- - Mean of finishing time of n pickers (n*1); 
+ - Mean of finishing time of n pickers (n*1); 	
  - Variance of finishing time of n pickers (n*1);
  - Moving velocity of n pickers;
  - Mean of finish position on furrow; 

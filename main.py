@@ -56,6 +56,7 @@ class picker_state(object):
             sample = np.random.normal(mean, sigma) # sampling from a unknown distribution as a ground truth
         self.ft_tru_cur=sample
         self.picking_time=0
+        self.wait = False
     def _walk_t_nxt(self, p_pos):
         pos_start = np.asarray([p_pos[0],y_head])
         pos_end = np.asarray([p_pos[0]+x_offset*picker_num, y_offset])
@@ -87,6 +88,7 @@ class picker_state(object):
                             self.wait_time += delta_t - self.ft_tru_cur
                             self.ft_tru_cur = 0  
                             self.picking_time += self.ft_tru_cur-self.walk_time
+                            self.wait = True
                         else:
                             self.sample_ft()  
                             delta_t -= self.ft_tru_cur
@@ -117,6 +119,7 @@ class picker_state(object):
                             self.wait_time += delta_t-self.ft_tru_cur
                             self.picking_time += self.ft_tru_cur
                             self.ft_tru_cur = 0
+                            self.wait = True
                         else:
                             self.sample_ft()
                             delta_t -= self.ft_tru_cur
@@ -146,6 +149,7 @@ class picker_state(object):
                             self.wait_time += delta_t - self.ft_tru_cur
                             self.picking_time += self.ft_tru_cur-self.walk_time
                             self.ft_tru_cur = 0
+                            self.wait=0
                     else:
                         self.sample_ft()
                         delta_t -= self.ft_tru_cur
@@ -158,6 +162,7 @@ class picker_state(object):
                     self._pos_nxt_x = self.p_pos[0]+x_offset*picker_num
         elif not self.serve_ready:
             self.wait_time += delta_t
+            self.wait = True
             # print "here!!"
         else: # ready to serve and ft=0
             self.serve_ready = False
@@ -231,7 +236,7 @@ def state_print(pickers):
         wt.append(picker.wait_time)
     print "waiting time",wt
     print "finishing time",ft
-def MSA_policy(pickers, robots):
+def MSA_policy_manual(pickers, robots):
     
     p_NO = int(raw_input())
     tar_pos = np.zeros(2)
@@ -264,7 +269,6 @@ def main():
                 robots[i].cal_time(pickers[robots[i].p_NO].ft_tru_cur,pickers[robots[i].p_NO].center) # calculate exe time, running time and back time
                 print pickers[robots[i].p_NO].ft_tru_cur
             print [robot.back_time for robot in robots]
-
         elif n==1: # when all robot are assigned, we need to calculate delta_t of next event coming
              state_print(pickers)
              tar_pos, p_NO = MSA_policy(pickers, robots)
@@ -273,6 +277,8 @@ def main():
              robots[idx_idle].tar_pos = np.copy(tar_pos)
              robots[idx_idle].cal_time(pickers[robots[idx_idle].p_NO].ft_tru_cur,pickers[robots[idx_idle].p_NO].center)
         else: # update state to the instant of next robot back
+            r_assign = [robot.p_NO for robot in robots]
+            print "current assignment", r_assign
             r_back_time=[robot.back_time for robot in robots]
             r_serve_pickers=[robot.p_NO for robot in robots]
             # r_exe_time=[robot.exe_time for robot in robots]
@@ -291,106 +297,15 @@ def main():
                 if robot.run_time > delta_t:
                     robot.run_time -= delta_t
                     pickers[robot.p_NO].state_update(delta_t)
-                else:
-                    pickers[robot.p_NO].serve_ready = True
+                else:                     
+                    if pickers[robot.p_NO].ft_cur_fur < robot.run_time:
+                        pickers[robot.p_NO].state_update(robot.run_time)
+                        pickers[robot.p_NO].serve_ready=True
+                        pickers[robot.p_NO].state_update(delta_t-robot.run_time)
+                    else:
+                        pickers[robot.p_NO].serve_ready = True # ready state is not obtained immediately!
+                        pickers[robot.p_NO].state_update(delta_t)
                     robot.r_run_time = 0
-                    pickers[robot.p_NO].state_update(delta_t)
-                    # if robot.exe_time > delta_t: # check if picker finish their picking, if not
-                    #     robot.exe_time -= delta_t
-                    #     pickers[robot.p_NO].state_update(delta_t)
-                    # else: # if yes, finishing current tray
-                    #     pickers[robot.p_NO].state_update(robot.exe_time)
-                    #     pickers[robot.p_NO].serve_ready=False
-                    #     pickers[robot.p_NO].sample_ft()
-                    #     pickers[robot.p_NO].state_update(delta_t-robot.exe_time)
-            # print [pickers[robot.p_NO].serve_ready for robot in robots]
-            r_assign = [robot.p_NO for robot in robots]
-            print "current assignment", r_assign
             robots[idx_min].p_NO=-1
-# def main():
-#     pickers, robots = field_initialization()
-#     # initialization for robot position
-#     # r_assign = np.ones(robot_num)*-1
-#     # r_run_time = np.zeros(robot_num)
-#     # r_exe_time = np.zeros(robot_num) # max(f_t_tray, r_run_time) + proc_time + r_run_time
-#     # r_back_time = np.zeros(robot_num)
-#     # r_tar_pos = np.zeros(robot_num,2)
-#     r_assign = [robot.picker_NO for robot in robots]
-#     while True:
-#         n = list(r_assign).count(-1)
-#         if n > 1: # only for initialization with robot_num
-#             for i in range(n):
-#                 tar_pos, picker = MSA_policy(pickers, robots) # assign means pickers' number
-#                 run_time, exe_time, back_time = cal_exe_time(tar_pos, picker)
-#                 r_assign[i] = picker.picker_NO
-#                 r_exe_time[i] = exe_time
-#                 r_run_time[i] = run_time
-#                 r_back_time[i] = back_time
-#             # r_serve_time = np.copy(r_run_time)
-#         elif n==1: # when all robot are assigned, we need to calculate delta_t of next event coming
-#              tar_pos, picker = MSA_policy(pickers, r_exe_time)
-#              run_time, exe_time, back_time = cal_exe_time(tar_pos, picker)
-#              idx_idle = np.where(r_assign==-1) 
-#              r_assign[idx_idle] = picker.picker_NO
-#              r_exe_time[idx_idle] = exe_time   
-#              r_run_time[idx_idle] = run_time
-#              r_back_time[idx_idle] = back_time
-#             # delta_t, r_tar_pos, r_exe_time, r_assign = cal_exe_time(r_tar_pos, r_exe_time, pickers) # return (robot_num,), (robot_num,)
-#         else: # update state to next robot back
-#             min_back = np.amin(r_back_time) # we want the system update to this instant
-#             idx_arrival = np.where((r_run_time<min_back)&(r_run_time)>0)
-#             if not idx_arrival[0].size:
-#                 r_run_time[idx_arrival]=0
-#                 for i in idx_arrival: pickers[r_assign[i]].serve_ready=True
-#             idx_exe_done = np.where((r_exe_time<min_back)&(r_exe_time>0))
-#             idx_not_done = np.where(r_exe_time>min_back)
-#             if not idx_exe_done[0].size:
-#                 delta_t_exe = r_exe_time[idx_exe_done]
-#                 delta_t_back = min_back - delta_t_exe
-#                 for i,det_exe,det_back in zip(idx_exe_done, delta_t_exe, delta_t_back): 
-#                     picker[r_assign[i]].update_state(det_exe)
-#                     pickers[r_assign[i]].sample_ft() # update 
-#                     picker_state.update_state(det_back)
-#                 r_exe_time[idx_exe_done]=0
-#             r_exe_time[idx_not_done] -= min_back
-#             if not idx_not_done[0].size:
-#                 for i in idx_not_done: pickers[r_assign[i]].update(min_back)
-#             # min_exe = np.amin(r_exe_time)
-#             # idx = np.where((r_run_time<min_exe)&(r_run_time>0))
-#             # if idx is not None: # for arrival events of all robot
-#             #     # run_time_before_assign = r_run_time[idx]
-#             #     # delta_t_arrival = np.max(run_time_before_assign)
-#             #     # r_exe_time -= delta_t_arrival
-#             #     # r_run_time -= delta_t_arrival
-#             #     r_run_time[idx] = 0
-#             #     for i,det in zip(idx, run_time_before_assign):
-#             #         pickers[r_assign[i]].serve_ready=True
-#             #     # picker_state_update(delta_t_arrival)
-#             #     # delta_t_exe = np.amin(r_exe_time)                    
-#             #     # r_run_time -= delta_t_exe
-#             #     # r_exe_time -= delta_t_exe
-#             #     # index = np.argmin(r_exe_time)
-#             #     # r_assign[index]=-1
-#             #     # r_exe_time[index]=0
-#             #     # picker_state_update(delta_t_exe)
-#             #     # pickers[r_assign[index]].sample_ft()
-            
-#             # delta_t_exe = np.amin(r_exe_time)
-#             # r_run_time[r_run_time>0] -= delta_t_exe
-#             # r_exe_time -= delta_t_exe
-#             # index = argmin(r_exe_time)
-#             # picker_state_update(delta_t_exe)
-#             # pickers[r_assign[index]].sample_ft()
-#             # r_assign[index]=-1
-
-            
-#             # delta_t_serve = np.amin(r_run_time) # update state to serve time for waiting status
-#             # picker_state_update(delta_t_serve, pickers)
-#             # delta_t_exe = np.amin(r_exe_time)
-#             # idx = np.argmin(r_exe_time)
-#             # r_assign[idx] = -1
-#             # r_exe_time[idx] = 0
-#             # picker_state_update(delta_t-delta_t_serve, pickers)
-#             # pickers[r_assign[idx]].sample_ft() # initialize served picker and make him start again
 if __name__ == "__main__":
     main()
